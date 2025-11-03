@@ -2,4 +2,5 @@ Flask
 flask-cors
 gunicorn
 PyMuPDF
+docx2txt
 
