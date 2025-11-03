@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 import fitz  # PyMuPDF
-import tempfile
 import logging
 
 # Configurar logging
@@ -10,54 +8,43 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # ✅ permite peticiones desde otros dominios (React, Node, etc.)
+CORS(app)  # permite peticiones desde cualquier origen
 
 @app.route('/ocr', methods=['POST'])
 def ocr():
     try:
-        logger.info("📩 Petición recibida en /ocr")
+        logger.info("Recibida petición OCR")
 
-        # ✅ Verificar que se haya subido un archivo
+        # Revisamos si llegó un archivo
         if 'file' not in request.files:
-            logger.error("No se envió ningún archivo")
-            return jsonify({'error': 'No se envió ningún archivo'}), 400
-
+            return jsonify({'error': 'No se subió ningún archivo'}), 400
+        
         file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Nombre de archivo inválido'}), 400
 
-        # ✅ Guardar el archivo temporalmente
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp:
-            file.save(temp.name)
-            temp_path = temp.name
+        logger.info(f"Procesando archivo: {file.filename}")
 
-        logger.info(f"📄 Archivo guardado temporalmente en: {temp_path}")
-
-        # ✅ Procesar el archivo PDF
+        # Abrimos el PDF directamente desde el objeto FileStorage
+        doc = fitz.open(stream=file.read(), filetype="pdf")
         text = ""
-        with fitz.Document(temp_path) as doc:
-            logger.info(f"Documento abierto con {len(doc)} páginas")
-            for page_num, page in enumerate(doc):
-                logger.info(f"Procesando página {page_num + 1}")
-                text += page.get_text()
+        for page in doc:
+            text += page.get_text()
+        doc.close()
 
-        # ✅ Eliminar el archivo temporal
-        os.remove(temp_path)
-        logger.info("🗑️ Archivo temporal eliminado")
-
-        # ✅ Enviar resultado
-        logger.info(f"Texto extraído (longitud: {len(text)})")
+        logger.info(f"Texto extraído, longitud: {len(text)}")
         return jsonify({'texto': text})
 
     except Exception as e:
-        logger.error(f"❌ Error en OCR: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Error al procesar el archivo', 'details': str(e)}), 500
-
+        logger.error(f"Error en OCR: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
 
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5001))  # ✅ Render asigna el puerto
-    logger.info(f"🚀 Iniciando servicio OCR en puerto {port}")
+    import os
+    port = int(os.environ.get("PORT", 5001))
+    logger.info(f"Iniciando servicio OCR en puerto {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
